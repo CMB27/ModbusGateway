@@ -5,6 +5,7 @@
 #define MODBUS_TCP_BUF_SIZE (MODBUS_RTU_BUF_SIZE + 6)
 #define NO_DE_PIN 255
 #define MODBUS_TCP_PORT 502
+#define MODBUS_TCP_MAX_CLIENTS 4
 
 #include "Arduino.h"
 #include <WiFi.h>
@@ -20,7 +21,7 @@ class ModbusGateway {
 
   private:
     WiFiServer _server;
-    WiFiClient _client;
+    WiFiClient _client[MODBUS_TCP_MAX_CLIENTS];
     HardwareSerial *_serial;
     uint8_t _dePin;
     uint8_t _tcpBuf[MODBUS_TCP_BUF_SIZE];
@@ -30,9 +31,9 @@ class ModbusGateway {
     unsigned long _responseTimeout = 100;
     bool _timeoutFlag = false;
     
-    uint16_t _readTCPRequest();
-    void _writeTCPResponse(uint16_t len);
-    void _writeTCPExceptionResponse(uint8_t code);
+    uint16_t _readTCPRequest(uint8_t clientId);
+    void _writeTCPResponse(uint8_t clientId, uint16_t len);
+    void _writeTCPExceptionResponse(uint8_t clientId, uint8_t code);
 
     void _writeRTURequest(uint8_t len);
     uint16_t _readRTUResponse();

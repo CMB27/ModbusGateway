@@ -1,6 +1,6 @@
 #include "ModbusGateway.h"
 
-ModbusGateway::ModbusGateway(HardwareSerial& serial, uint8_t dePin, uint16_t port) : _server(port, 1) {
+ModbusGateway::ModbusGateway(HardwareSerial& serial, uint8_t dePin, uint16_t port) : _server(port, MODBUS_TCP_MAX_CLIENTS) {
   _serial = &serial;
   _dePin = dePin;
 }
@@ -21,15 +21,19 @@ void ModbusGateway::begin(unsigned long baud, uint32_t config, int8_t rxPin, int
 }
 
 void ModbusGateway::poll() {
-  if (!_client) _client = _server.available();
-  else if (_client.connected() && _client.available()) {
-    uint16_t len = _readTCPRequest();
-    if (len < 12 || _rtuBuf[0] > 247) return;
+  for (uint8_t i = 0; i < MODBUS_TCP_MAX_CLIENTS; i++) {
+    if (!_client[i]) {
+      _client[i] = _server.available();
+      continue;
+    }
+    if (!_client[i].connected() || !_client[i].available()) continue;
+    uint16_t len = _readTCPRequest(i);
+    if (len < 12 || _rtuBuf[0] > 247) continue;
     _writeRTURequest(len - 6);
-    if (_rtuBuf[0] == 0) return;
+    if (_rtuBuf[0] == 0) continue;
     len = _readRTUResponse();
-    if (len == 0) _writeTCPExceptionResponse(0x0B);
-    else _writeTCPResponse(len + 6);
+    if (len == 0) _writeTCPExceptionResponse(i, 0x0B);
+    else _writeTCPResponse(i, len + 6);
   }
 }
 
@@ -43,26 +47,26 @@ void ModbusGateway::clearTimeoutFlag() {
 
 
 
-uint16_t ModbusGateway::_readTCPRequest() {
+uint16_t ModbusGateway::_readTCPRequest(uint8_t clientId) {
   uint16_t numBytes = 0;
-  while (_client.available() && numBytes < MODBUS_TCP_BUF_SIZE) {
-    _tcpBuf[numBytes] = _client.read();
+  while (_client[clientId].available() && numBytes < MODBUS_TCP_BUF_SIZE) {
+    _tcpBuf[numBytes] = _client[clientId].read();
     numBytes++;
   }
   return numBytes;
 }
 
-void ModbusGateway::_writeTCPResponse(uint16_t len) {
+void ModbusGateway::_writeTCPResponse(uint8_t clientId, uint16_t len) {
   _tcpBuf[4] = highByte(len - 6);
   _tcpBuf[5] = lowByte(len - 6);
-  _client.write(_tcpBuf, len);
-  _client.flush();
+  _client[clientId].write(_tcpBuf, len);
+  _client[clientId].flush();
 }
 
-void ModbusGateway::_writeTCPExceptionResponse(uint8_t code) {
+void ModbusGateway::_writeTCPExceptionResponse(uint8_t clientId, uint8_t code) {
   _tcpBuf[7] |= 0x80;
   _tcpBuf[8] = code;
-  _writeTCPResponse(9);
+  _writeTCPResponse(clientId, 9);
 }
 
 
